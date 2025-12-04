@@ -8,9 +8,31 @@
     </div>
 
     <div class="top-bar-center">
-      <div class="command-palette-trigger" title="命令面板 (Ctrl+Shift+P)">
-        <el-icon><Search /></el-icon>
-        <span>VueDrag Builder</span>
+      <div class="device-switcher">
+        <button 
+          class="icon-btn" 
+          :class="{ active: editorStore.deviceMode === 'desktop' }"
+          @click="editorStore.setDeviceMode('desktop')"
+          title="桌面端 (1280px)"
+        >
+          <el-icon><Monitor /></el-icon>
+        </button>
+        <button 
+          class="icon-btn" 
+          :class="{ active: editorStore.deviceMode === 'tablet' }"
+          @click="editorStore.setDeviceMode('tablet')"
+          title="平板 (768px)"
+        >
+          <el-icon><Iphone style="transform: rotate(90deg)" /></el-icon>
+        </button>
+        <button 
+          class="icon-btn" 
+          :class="{ active: editorStore.deviceMode === 'mobile' }"
+          @click="editorStore.setDeviceMode('mobile')"
+          title="移动端 (375px)"
+        >
+          <el-icon><Iphone /></el-icon>
+        </button>
       </div>
     </div>
 
@@ -133,7 +155,8 @@ import {
   Search,
   Monitor,
   Files,
-  Setting
+  Setting,
+  Iphone
 } from '@element-plus/icons-vue'
 import { useCanvasStore } from '@/stores/canvas'
 
@@ -248,6 +271,16 @@ const handleCanvasSizeChange = () => {
   flex: 2;
   display: flex;
   justify-content: center;
+  gap: 16px;
+}
+
+.device-switcher {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background-color: var(--vscode-input-bg);
+  border-radius: 4px;
+  padding: 2px;
 }
 
 .command-palette-trigger {

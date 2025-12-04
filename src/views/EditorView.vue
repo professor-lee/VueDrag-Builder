@@ -24,7 +24,7 @@
         >
           <div class="resizer-handle"></div>
           <div class="collapse-trigger top-trigger" @click.stop="toggleLeftPanel" title="折叠/展开">
-            <el-icon :size="12"><component :is="isLeftCollapsed ? 'ArrowRight' : 'ArrowLeft'" /></el-icon>
+            <el-icon :size="14"><component :is="isLeftCollapsed ? ArrowRight : ArrowLeft" /></el-icon>
           </div>
         </div>
 
@@ -44,7 +44,7 @@
         >
           <div class="resizer-handle"></div>
           <div class="collapse-trigger top-trigger" @click.stop="toggleRightPanel" title="折叠/展开">
-            <el-icon :size="12"><component :is="isRightCollapsed ? 'ArrowLeft' : 'ArrowRight'" /></el-icon>
+            <el-icon :size="14"><component :is="isRightCollapsed ? ArrowLeft : ArrowRight" /></el-icon>
           </div>
         </div>
 
@@ -82,7 +82,7 @@ import { useCanvasStore } from '@/stores/canvas'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useProjectExport } from '@/composables/useProjectExport'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Fold, Expand } from '@element-plus/icons-vue'
 
 import TopBar from '@/components/layout/TopBar.vue'
 import LeftPanel from '@/components/layout/LeftPanel.vue'

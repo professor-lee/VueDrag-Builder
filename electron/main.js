@@ -10,7 +10,7 @@ import { createMenu } from './menu.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // 禁用硬件加速（可选，根据需要）
-// app.disableHardwareAcceleration()
+app.disableHardwareAcceleration()
 
 let mainWindow = null
 let ptyProcess = null

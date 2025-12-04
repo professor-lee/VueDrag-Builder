@@ -274,7 +274,8 @@ const handleMouseLeave = () => {
 
 // 拖拽开始（用于重新排序）
 const handleDragStart = (e) => {
-  e.dataTransfer.effectAllowed = 'move'
+  // 允许所有操作，以兼容不同的 dropEffect
+  e.dataTransfer.effectAllowed = 'all'
   e.dataTransfer.setData('move-component-id', props.component.id)
   e.dataTransfer.setData('type', 'move')
   // 阻止事件冒泡，避免触发父组件的拖拽
@@ -304,7 +305,10 @@ const handleDelete = async () => {
 const handleDragOver = (e) => {
   e.preventDefault()
   e.stopPropagation()
-  e.dataTransfer.dropEffect = 'copy'
+  
+  // 根据操作类型设置 dropEffect
+  const isMove = e.dataTransfer.types.includes('move-component-id')
+  e.dataTransfer.dropEffect = isMove ? 'move' : 'copy'
 
   // 计算鼠标在组件中的相对位置，决定插入位置
   const rect = e.currentTarget.getBoundingClientRect()

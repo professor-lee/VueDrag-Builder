@@ -1,3 +1,264 @@
+# V1.4 更新日志 (2025-12-04)
+
+## 1. 需求更新
+
+### 1.1 可视化背景修复 (Canvas Background Fix)
+- **需求**: 修复可视化模式下背景高度受内部页面大小影响的问题，确保背景始终充满应用显示区域。
+- **实现**: 强制 `.canvas-area` 占据 100% 宽高，并修正 CSS 布局。
+
+### 1.2 代码预览缩放修复 (Preview Zoom Fix)
+- **需求**: 修复代码模式下在预览页面内部按 `Ctrl + 滚轮` 无法触发缩放的问题。
+- **技术**: 在 iframe 内部注入事件监听脚本，捕获 `wheel` 事件并通过 `postMessage` 转发给父窗口处理。
+
+### 1.3 代码预览触控板支持 (Preview Touchpad)
+- **需求**: 为代码模式预览添加触控板支持（主要是水平平移）。
+- **实现**: 同样通过 `postMessage` 转发非缩放的 `wheel` 事件，父窗口识别水平分量进行平移。
+
+### 1.4 折叠图标显示修复 (Collapse Icons Fix)
+- **需求**: 修复资源管理器和属性检查器的折叠按钮图标不显示的问题。
+- **原因**: `<component :is="...">` 使用字符串引用组件失败。
+- **修复**: 直接绑定组件对象 (`:is="ArrowLeft"`).
+
+## 2. 技术方案
+
+### 2.1 背景布局
+- **文件**: `src/components/canvas/CanvasArea.vue`
+- **CSS**: `.canvas-area { width: 100%; height: 100%; }`
+
+### 2.2 Iframe 事件穿透
+- **文件**: `src/components/code-mode/CodeEditor.vue`
+- **注入脚本**:
+  ```javascript
+  window.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      e.preventDefault()
+      window.parent.postMessage({ type: 'preview-wheel', ... }, '*')
+    }
+  }, { passive: false })
+  ```
+- **父窗口监听**: `window.addEventListener('message', handleIframeMessage)`
+
+## 3. Todo List
+
+1.  [x] 修改 `CanvasArea.vue`: 修复背景 CSS。
+2.  [x] 修改 `CodeEditor.vue`: 注入 iframe 事件监听脚本。
+3.  [x] 修改 `CodeEditor.vue`: 实现父窗口消息处理与缩放/平移逻辑。
+4.  [x] 修改 `EditorView.vue`: 修复折叠图标绑定。
+
+# V1.3 更新日志 (2025-12-04)
+
+## 1. 需求更新
+
+### 1.1 代码预览体验一致性 (Preview Consistency)
+- **需求**: 代码模式下的预览背景应与可视化模式保持一致（深色背景+网格），以提供统一的视觉体验。
+- **实现**: 同步 `CanvasArea` 的背景样式到 `CodeEditor` 的预览区域。
+
+### 1.2 预览交互优化 (Interaction Fixes)
+- **需求**: 解决代码模式预览中缩放/平移与内部滚动的冲突。
+- **方案**: 
+  - 移除无修饰键时的滚轮平移功能，恢复默认的页面滚动行为。
+  - 保留 `Ctrl + Wheel` 进行缩放。
+  - 保留 `Space + Drag` 进行平移。
+
+### 1.3 视图重置 (Reset View)
+- **需求**: 在可视化画布和代码预览中提供“重置视图”按钮，一键恢复居中和 100% 缩放。
+- **交互**: 点击按钮 -> `panX=0, panY=0, zoom=100`.
+
+### 1.4 折叠图标优化 (Collapse Icons)
+- **需求**: 将侧边栏折叠按钮图标更改为更直观的方向箭头 (`<` 和 `>`)。
+
+## 2. 技术方案
+
+### 2.1 样式同步
+- **文件**: `src/components/code-mode/CodeEditor.vue`
+- **CSS**: 复制 `CanvasArea` 的 `.canvas-background` 样式到 `.preview-viewport`。
+
+### 2.2 交互逻辑
+- **文件**: `src/components/code-mode/CodeEditor.vue`
+- **逻辑**: 修改 `handleWheel`，仅在 `e.ctrlKey` 为真时阻止默认行为并执行缩放。
+
+### 2.3 重置功能
+- **文件**: `src/components/canvas/CanvasArea.vue`, `src/components/code-mode/CodeEditor.vue`
+- **实现**: 添加悬浮按钮 (Canvas) 和工具栏按钮 (Code)，绑定 `resetView` 方法。
+
+## 3. Todo List
+
+1.  [x] 修改 `CodeEditor.vue`: 更新预览背景样式。
+2.  [x] 修改 `CodeEditor.vue`: 修复滚轮冲突。
+3.  [x] 修改 `CodeEditor.vue`: 添加重置视图按钮。
+4.  [x] 修改 `CanvasArea.vue`: 添加重置视图按钮。
+5.  [x] 修改 `EditorView.vue`: 更新折叠图标为箭头。
+
+# V1.2 更新日志 (2025-12-04)
+
+## 1. 需求更新
+
+### 1.1 触控板支持 (Touchpad Support)
+- **需求**: 支持使用触控板双指滑动进行画布平移，无需按住空格键。
+- **交互**: 双指在画布上滑动 -> 画布跟随平移。
+- **技术**: 监听 `wheel` 事件，当无 Ctrl/Meta 键按下时，将 `deltaX/Y` 映射为平移量。
+
+### 1.2 多端预览切换 (Device Preview)
+- **需求**: 在顶部工具栏添加切换按钮，快速预览桌面、平板、手机尺寸。
+- **交互**: 点击图标切换画布宽度。
+- **尺寸定义**:
+  - Desktop: 1280px (自适应)
+  - Tablet: 768px
+  - Mobile: 375px
+
+### 1.3 代码同步优化 (Code Sync)
+- **需求**: 修复代码模式修改无法同步回可视化模式的问题。
+- **优化**: 增强 `syncToCanvas` 解析逻辑，支持 `v-model` 映射，修复子组件递归解析问题。
+
+### 1.4 UI 细节优化
+- **需求**: 为左右侧面板的折叠按钮添加直观的图标 (Expand/Fold)。
+
+### 1.5 代码模式预览优化 (Code Mode Preview)
+- **需求**: 代码模式下的预览窗口应具备与可视化模式相同的交互体验（平移、缩放、设备尺寸切换）。
+- **交互**: 
+  - 鼠标滚轮/触控板 -> 平移/缩放。
+  - 顶部设备切换 -> 预览窗口宽度响应。
+- **原型**:
+  ```
+  +--------------------------------------------------+
+  |  Code Editor      |      Preview Panel           |
+  |                   |  +-----------------------+   |
+  |  <template>       |  |      [Mobile]         |   |
+  |    <div>...       |  |    +-------------+    |   |
+  |                   |  |    |   Iframe    |    |   |
+  |                   |  |    |             |    |   |
+  |                   |  |    +-------------+    |   |
+  |                   |  +-----------------------+   |
+  +--------------------------------------------------+
+  ```
+
+### 1.6 代码模式自动同步 (Auto Sync)
+- **需求**: 离开代码模式（切换回可视化模式）时，自动将代码变更同步到画布，防止修改丢失。
+- **逻辑**: 在组件卸载前 (`onBeforeUnmount`) 自动触发 `syncToCanvas`。
+
+## 2. 技术方案
+
+### 2.1 触控板平移
+- **文件**: `src/components/canvas/CanvasArea.vue`
+- **逻辑**:
+  ```javascript
+  const handleWheel = (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      // Zoom logic
+    } else {
+      // Pan logic
+      panX.value -= e.deltaX
+      panY.value -= e.deltaY
+    }
+  }
+  ```
+
+### 2.2 设备切换
+- **文件**: `src/components/layout/TopBar.vue`
+- **UI**: 添加三个图标按钮，绑定 `editorStore.setDeviceMode`。
+
+### 2.3 代码同步
+- **文件**: `src/components/code-mode/CodeEditor.vue`
+- **逻辑**: 更新 `parseNodeV2`，增加对 `v-model` 的处理，确保组件树构建正确。
+
+### 2.4 代码预览增强
+- **文件**: `src/components/code-mode/CodeEditor.vue`
+- **架构**: 
+  - 在 `preview-panel` 中引入 `transform-layer` 和 `device-wrapper` 结构。
+  - 复用 `CanvasArea` 的平移/缩放逻辑 (panX, panY, zoom)。
+  - 绑定 `editorStore.deviceMode` 控制宽度。
+
+### 2.5 自动同步
+- **文件**: `src/components/code-mode/CodeEditor.vue`
+- **逻辑**:
+  ```javascript
+  onBeforeUnmount(async () => {
+    await syncToCanvas(true) // silent mode
+    // ... cleanup
+  })
+  ```
+
+## 3. Todo List
+
+1.  [x] 修改 `CanvasArea.vue`: 实现触控板平移。
+2.  [x] 修改 `TopBar.vue`: 添加设备切换按钮。
+3.  [x] 修改 `EditorView.vue`: 更新折叠按钮图标。
+4.  [x] 修改 `CodeEditor.vue`: 修复代码同步逻辑。
+5.  [ ] 修改 `CodeEditor.vue`: 实现预览区域的平移、缩放、设备尺寸响应。
+6.  [ ] 修改 `CodeEditor.vue`: 添加 `onBeforeUnmount` 自动同步逻辑。
+
+# V1.1 更新日志 (2025-12-04)
+
+## 1. 需求更新
+
+### 1.1 画布交互优化 (Canvas Panning)
+- **现状问题**: 按下空格键拖动画布时，如果鼠标移动过快超出画布区域，或者经过某些特定元素，拖动会中断或失效。
+- **优化目标**: 实现全局平滑拖动。按下空格键并按下鼠标左键后，无论鼠标移动到屏幕何处，画布都应跟随移动，直到松开鼠标左键。
+- **交互原型**:
+  ```
+  [ 按住 Space + 鼠标左键拖动 ]
+       |
+       v
+  +----------------------------------+
+  |           Canvas Area            |
+  |                                  |
+  |      [ Component ]               |
+  |            ^                     |
+  |            | (Mouse moves out)   |
+  |            |                     |
+  +------------|---------------------+
+               |
+        (Still Panning)
+  ```
+
+### 1.2 组件重排优化 (Component Reordering)
+- **现状问题**: 从组件库拖入新组件正常，但拖动已放置在画布上的组件进行重新排列（排序或移动到其他容器）失效。
+- **优化目标**: 
+  - 选中画布上的组件并拖动时，应显示"移动"光标。
+  - 拖动经过其他组件或容器时，应正确显示插入位置指示线。
+  - 松开鼠标后，组件应移动到新位置。
+- **交互原型**:
+  ```
+  [ Component A ]  [ Component B ]
+         |
+    (Drag A)
+         |
+         v
+  [ Component B ]  | (Drop Indicator)
+                   |
+             [ Component A ] (Moved)
+  ```
+
+## 2. 技术方案
+
+### 2.1 画布平移 (Canvas Panning)
+- **文件**: `src/components/canvas/CanvasArea.vue`
+- **方案**:
+  - 在 `handleMouseDown` 中，当开始平移时，使用 `window.addEventListener` 绑定 `mousemove` 和 `mouseup` 事件。
+  - 这确保了即使鼠标移出 `.canvas-area` DOM 元素，事件仍能被捕获。
+  - 在 `handleMouseUp` (及 `mouseleave` 的清理逻辑中) 移除 `window` 上的监听器。
+  - 移除模板中绑定在 `div` 上的 `@mousemove` 和 `@mouseup` (或保留作为 fallback，但主要逻辑移至 window handler)。
+
+### 2.2 组件重排 (Component Reordering)
+- **文件**: 
+  - `src/components/canvas/CanvasArea.vue`
+  - `src/components/canvas/DynamicComponent.vue`
+- **方案**:
+  - **识别移动操作**: 在 `dragover` 事件中，由于安全限制无法直接读取 `dataTransfer.getData`，改用 `e.dataTransfer.types.includes('move-component-id')` 来判断是否为组件移动操作。
+  - **设置 DropEffect**: 
+    - 如果检测到移动操作，显式设置 `e.dataTransfer.dropEffect = 'move'`。
+    - 否则默认为 `'copy'` (用于从组件库添加)。
+  - **DragStart 兼容性**: 在 `DynamicComponent.vue` 的 `handleDragStart` 中，设置 `e.dataTransfer.effectAllowed = 'all'` (或 `'copyMove'`)，以确保浏览器允许在不同 `dropEffect` 场景下的拖放。
+
+## 3. Todo List
+
+1.  [ ] 修改 `src/components/canvas/CanvasArea.vue`: 实现基于 `window` 的画布平移事件监听。
+2.  [ ] 修改 `src/components/canvas/CanvasArea.vue`: 优化 `handleDragOver` 逻辑，使用 `types.includes` 检测移动操作。
+3.  [ ] 修改 `src/components/canvas/DynamicComponent.vue`: 优化 `handleDragStart` 设置 `effectAllowed`。
+4.  [ ] 修改 `src/components/canvas/DynamicComponent.vue`: 优化 `handleDragOver` 逻辑，使用 `types.includes` 检测移动操作并设置正确的 `dropEffect`。
+5.  [ ] 验证画布平移功能（包括移出区域）。
+6.  [ ] 验证组件重排功能（同级排序、跨容器移动）。
+
 # VueDrag Builder PRD（产品需求文档）
 
 ## 一、产品概述

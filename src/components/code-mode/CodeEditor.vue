@@ -27,6 +27,9 @@
         <button class="action-btn" @click="syncToCanvas" title="同步到画布 (实验性)">
           <el-icon><RefreshLeft /></el-icon>
         </button>
+        <button class="action-btn" @click="resetView" title="重置视图">
+          <el-icon><Aim /></el-icon>
+        </button>
         <div class="view-toggle">
           <button 
             class="toggle-btn" 
@@ -63,16 +66,30 @@
       </div>
 
       <!-- 预览面板 -->
-      <div v-show="viewMode !== 'code'" class="preview-panel">
+      <div 
+        v-show="viewMode !== 'code'" 
+        class="preview-panel"
+        @mousedown="handleMouseDown"
+        @wheel="handleWheel"
+        :style="{ cursor: isPanning ? 'grabbing' : (isSpacePressed ? 'grab' : 'default') }"
+      >
         <div class="preview-header">
           <span>Preview</span>
         </div>
-        <iframe
-          ref="previewFrame"
-          class="preview-iframe"
-          sandbox="allow-scripts allow-same-origin allow-modals"
-          :srcdoc="previewSrcDoc"
-        ></iframe>
+        <div class="preview-viewport">
+          <div class="preview-transform-layer" :style="transformStyle">
+            <div class="preview-page" :style="pageStyle">
+              <iframe
+                ref="previewFrame"
+                class="preview-iframe"
+                sandbox="allow-scripts allow-same-origin allow-modals"
+                :srcdoc="previewSrcDoc"
+              ></iframe>
+              <!-- 遮罩层，防止拖拽时事件被 iframe 捕获 -->
+              <div v-if="isPanning || isSpacePressed" class="iframe-overlay"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -85,7 +102,7 @@ import { useProjectStore } from '@/stores/project'
 import { useEditorStore } from '@/stores/editor'
 import { generateVueSFC } from '@/utils/codeGenerator'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { MagicStick, CopyDocument, RefreshRight, RefreshLeft, Reading, Document, Monitor } from '@element-plus/icons-vue'
+import { MagicStick, CopyDocument, RefreshRight, RefreshLeft, Reading, Document, Monitor, Aim } from '@element-plus/icons-vue'
 import * as monaco from 'monaco-editor'
 import { cloneDeep } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
@@ -118,6 +135,137 @@ self.MonacoEnvironment = {
 const canvasStore = useCanvasStore()
 const projectStore = useProjectStore()
 const editorStore = useEditorStore()
+
+// --- 预览交互状态 ---
+const isPanning = ref(false)
+const isSpacePressed = ref(false)
+const panX = ref(0)
+const panY = ref(0)
+const startX = ref(0)
+const startY = ref(0)
+
+const pageBackground = computed(() => {
+  const styles = canvasStore.globalStyles
+  if (!styles) return '#ffffff'
+  if (typeof styles === 'string') {
+    if (styles.startsWith('#') || styles.startsWith('rgb')) return styles
+    const match = styles.match(/background(?:-color)?:\s*([^;]+);?/i)
+    if (match && match[1]) return match[1].trim()
+  }
+  if (typeof styles === 'object' && styles.backgroundColor) return styles.backgroundColor
+  return '#ffffff'
+})
+
+const transformStyle = computed(() => {
+  return {
+    transform: `translate(${panX.value}px, ${panY.value}px) scale(${editorStore.zoom / 100})`,
+    transformOrigin: 'center top',
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    paddingTop: '40px',
+    paddingBottom: '40px',
+  }
+})
+
+const pageStyle = computed(() => {
+  const baseStyle = {
+    backgroundColor: pageBackground.value,
+    boxShadow: '0 0 20px rgba(0, 0, 0, 0.15)',
+    position: 'relative',
+    transition: 'width 0.3s, height 0.3s, background-color 0.3s',
+    display: 'flex',
+    flexDirection: 'column',
+  }
+
+  const deviceSizes = {
+    desktop: '1280px',
+    tablet: '768px',
+    mobile: '375px',
+  }
+
+  return {
+    ...baseStyle,
+    width: deviceSizes[editorStore.deviceMode] || '100%',
+    minHeight: '800px',
+    height: 'auto',
+  }
+})
+
+const handleKeyDown = (e) => {
+  if (e.code === 'Space' && !e.repeat && !e.target.matches('input, textarea')) {
+    isSpacePressed.value = true
+  }
+}
+
+const handleKeyUp = (e) => {
+  if (e.code === 'Space') {
+    isSpacePressed.value = false
+  }
+}
+
+const handleMouseDown = (e) => {
+  if (!isSpacePressed.value || e.button !== 0) return
+  
+  isPanning.value = true
+  startX.value = e.clientX - panX.value
+  startY.value = e.clientY - panY.value
+  e.preventDefault()
+
+  window.addEventListener('mousemove', handleMouseMove)
+  window.addEventListener('mouseup', handleMouseUp)
+}
+
+const handleMouseMove = (e) => {
+  if (isPanning.value) {
+    panX.value = e.clientX - startX.value
+    panY.value = e.clientY - startY.value
+  }
+}
+
+const handleMouseUp = () => {
+  isPanning.value = false
+  window.removeEventListener('mousemove', handleMouseMove)
+  window.removeEventListener('mouseup', handleMouseUp)
+}
+
+const resetView = () => {
+  panX.value = 0
+  panY.value = 0
+  editorStore.resetZoom()
+}
+
+const handleWheel = (e) => {
+  // 只有在预览区域才响应
+  if (viewMode.value === 'code') return
+
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault()
+    const delta = -e.deltaY
+    const zoomFactor = delta > 0 ? 1.1 : 0.9
+    let newZoom = editorStore.zoom * zoomFactor
+    newZoom = Math.max(10, Math.min(200, newZoom))
+    if (Math.abs(newZoom - editorStore.zoom) > 0.5) {
+      editorStore.setZoom(Math.round(newZoom))
+    }
+  } else {
+    // 触控板平移支持 (通过 iframe 转发的水平滚动或直接在遮罩层上的滚动)
+    // 如果是垂直滚动，通常是页面内部滚动，但如果是触控板双指，可能会有水平分量
+    // 或者如果是在遮罩层上(拖拽时)，我们允许平移
+    
+    // 简单的策略：如果有水平分量，或者是在遮罩层上触发的(非iframe内部)，则平移
+    // 注意：iframe 内部的垂直滚动已被过滤（除非我们想接管垂直平移，但这会破坏页面滚动）
+    // 这里我们只处理水平平移，或者当页面无法滚动时的垂直平移（太复杂，暂只处理水平）
+    
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+       panX.value -= e.deltaX
+    }
+    // 垂直方向 panY.value -= e.deltaY; // 暂时禁用垂直平移以优先页面滚动
+  }
+}
+// -------------------
 
 const viewMode = ref('split')
 const activeSection = ref('template')
@@ -276,6 +424,70 @@ const buildPreviewDocument = (code) => {
   <script src="https://registry.npmmirror.com/element-plus/2.4.4/files/dist/index.full.min.js"><\/script>
   <script src="https://registry.npmmirror.com/@element-plus/icons-vue/2.3.1/files/dist/index.iife.min.js"><\/script>
   <script>
+    // 注入事件监听，处理缩放和触控板平移
+    window.addEventListener('wheel', (e) => {
+      // 如果按下了 Ctrl/Meta 键 (缩放) 或者 触控板双指滑动 (通常 deltaX/Y 较小且连续)
+      // 我们将事件发送给父窗口处理
+      
+      // 简单的触控板检测逻辑：如果不是缩放，我们发送平移事件
+      // 注意：在 iframe 内部，我们无法完全阻止默认滚动，除非我们接管所有滚动
+      // 这里我们主要关注 Ctrl+滚轮 (缩放) 和 触控板平移 (如果父级需要接管)
+      
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        window.parent.postMessage({
+          type: 'preview-wheel',
+          deltaX: e.deltaX,
+          deltaY: e.deltaY,
+          ctrlKey: e.ctrlKey,
+          metaKey: e.metaKey
+        }, '*')
+      } else {
+        // 对于普通滚动，我们让它自然发生 (内部滚动)
+        // 但如果是触控板平移想要移动整个画布视图而不是内部滚动，这会有冲突
+        // 根据需求：代码模式预览添加触控板支持
+        // 我们假设用户想要的是：如果内部没滚动到底，就内部滚动；如果到底了，或者用户意图是平移画布？
+        // 通常代码预览模式下，用户更习惯内部滚动。
+        // 但需求说 "为代码模式预览添加触控板支持"，结合上下文 "修正可视化模式...背景高度...代码模式预览...触控板支持"
+        // 可能是指像可视化模式那样平移整个画布？
+        // 如果是这样，我们需要一种方式区分内部滚动和画布平移。
+        // 既然之前移除了普通滚轮平移以解决冲突，那么触控板支持可能指的是：
+        // 当用户使用触控板时，能够像可视化模式一样平移视图。
+        // 我们可以检测是否是触控板 (通常 deltaMode === 0 且 deltaX/Y 是小数或很小)
+        // 或者我们简单地将所有非 Ctrl 滚轮事件也发出去，由父级决定是否消费？
+        // 不，父级已经移除了普通滚轮处理。
+        
+        // 让我们重新审视需求："代码模式预览现在缩小放大与内部滚动存在冲突;为代码模式预览添加触控板支持"
+        // 这意味着：
+        // 1. Ctrl+滚轮应该缩放 (目前冲突或无效) -> 必须修复
+        // 2. 触控板应该支持平移 (目前可能无效)
+        
+        // 策略：
+        // 发送所有 wheel 事件给父级。
+        // 父级判断：
+        // - 如果是 Ctrl+Wheel -> 缩放
+        // - 如果是 触控板 (如何判断? 也许通过 deltaX != 0) -> 平移?
+        // - 如果是 普通垂直滚动 -> 忽略 (让 iframe 滚动)
+        
+        // 但是 iframe 的默认滚动会被 e.preventDefault() 阻止吗？
+        // 如果我们在父级处理了，我们应该在 iframe 里 preventDefault。
+        
+        // 让我们只拦截 Ctrl+Wheel (缩放) 和 明显的水平滚动 (触控板/横向滚轮)
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+           // 主要是水平移动，可能是触控板平移或横向滚动
+           // 发送给父级尝试平移
+           e.preventDefault()
+           window.parent.postMessage({
+             type: 'preview-wheel',
+             deltaX: e.deltaX,
+             deltaY: e.deltaY,
+             ctrlKey: e.ctrlKey,
+             metaKey: e.metaKey
+           }, '*')
+        }
+      }
+    }, { passive: false })
+
     const template = ${JSON.stringify(safeTemplate)}
     const scriptMeta = ${JSON.stringify(scriptMeta)}
 
@@ -494,6 +706,9 @@ const syncToCanvas = async (silent = false) => {
           // 动态属性 (简化处理，作为字符串存储)
           const propName = name.replace(/^:|v-bind:/, '')
           component.props[propName] = value
+        } else if (name === 'v-model') {
+          // v-model 支持
+          component.props['modelValue'] = value
         } else if (name.startsWith('@') || name.startsWith('v-on:')) {
           // 事件 (暂不处理反向同步)
         } else if (name === 'class') {
@@ -617,6 +832,8 @@ const syncToCanvas = async (silent = false) => {
           })
         } else if (name === 'class') {
           component.props.className = value
+        } else if (name === 'v-model') {
+          component.props['modelValue'] = value
         } else if (!name.startsWith('@') && !name.startsWith('v-on:')) {
           const propName = name.replace(/^:|v-bind:/, '')
           component.props[propName] = value
@@ -756,8 +973,30 @@ onMounted(() => {
     unsubscribeCanvas = canvasStore.$subscribe(() => {
       syncFromCanvas(false)
     })
+    
+    // 监听 iframe 消息
+    window.addEventListener('message', handleIframeMessage)
+  }
+  
+  if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
   }
 })
+
+const handleIframeMessage = (event) => {
+  if (event.data && event.data.type === 'preview-wheel') {
+    const { deltaX, deltaY, ctrlKey, metaKey } = event.data
+    // 构造一个伪造的事件对象传给 handleWheel
+    handleWheel({
+      deltaX,
+      deltaY,
+      ctrlKey,
+      metaKey,
+      preventDefault: () => {}
+    })
+  }
+}
 
 watch(viewMode, (newMode) => {
   if (newMode !== 'code' && editor) {
@@ -765,12 +1004,19 @@ watch(viewMode, (newMode) => {
   }
 })
 
-onBeforeUnmount(() => {
+onBeforeUnmount(async () => {
+  // 自动同步代码到画布 (防止修改丢失)
   if (editor) {
+    await syncToCanvas(true)
     editor.dispose()
   }
   if (typeof unsubscribeCanvas === 'function') {
     unsubscribeCanvas()
+  }
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('keydown', handleKeyDown)
+    window.removeEventListener('keyup', handleKeyUp)
+    window.removeEventListener('message', handleIframeMessage)
   }
 })
 </script>
@@ -944,5 +1190,24 @@ onBeforeUnmount(() => {
   flex: 1;
   width: 100%;
   border: none;
+  height: 100%; /* Ensure it fills the page */
+}
+
+.preview-viewport {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--vscode-editor-bg);
+  background-image: radial-gradient(var(--vscode-editor-lineHighlight) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.iframe-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
 }
 </style>

@@ -2,9 +2,6 @@
   <div 
     class="canvas-area" 
     @mousedown="handleMouseDown"
-    @mousemove="handleMouseMove"
-    @mouseup="handleMouseUp"
-    @mouseleave="handleMouseUp"
     :style="{ cursor: isPanning ? 'grabbing' : (isSpacePressed ? 'grab' : 'default') }"
     @wheel="handleWheel"
   >
@@ -46,6 +43,19 @@
         </div>
       </div>
     </div>
+
+    <!-- 平移遮罩层 -->
+    <div 
+      v-if="isSpacePressed || isPanning"
+      class="panning-overlay"
+      @mousedown="handleMouseDown"
+      :style="{ cursor: isPanning ? 'grabbing' : 'grab' }"
+    ></div>
+
+    <!-- 重置视图按钮 -->
+    <div class="canvas-controls">
+      <el-button circle :icon="Aim" @click="resetView" title="重置视图" />
+    </div>
   </div>
 </template>
 
@@ -54,6 +64,7 @@ import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useCanvasStore } from '@/stores/canvas'
 import { useEditorStore } from '@/stores/editor'
 import { ElMessage } from 'element-plus'
+import { Aim } from '@element-plus/icons-vue'
 import DynamicComponent from './DynamicComponent.vue'
 
 const canvasStore = useCanvasStore()
@@ -80,8 +91,14 @@ const handleKeyDown = (e) => {
 const handleKeyUp = (e) => {
   if (e.code === 'Space') {
     isSpacePressed.value = false
-    isPanning.value = false
+    // 不在这里取消 isPanning，允许用户在松开空格后继续拖动直到松开鼠标
   }
+}
+
+const resetView = () => {
+  panX.value = 0
+  panY.value = 0
+  editorStore.resetZoom()
 }
 
 onMounted(() => {
@@ -203,10 +220,14 @@ const handleMouseDown = (e) => {
   startX.value = e.clientX - panX.value
   startY.value = e.clientY - panY.value
   e.preventDefault()
+
+  // 使用 window 监听以支持移出画布区域
+  window.addEventListener('mousemove', handleMouseMove)
+  window.addEventListener('mouseup', handleMouseUp)
 }
 
 const handleMouseMove = (e) => {
-  if (isPanning.value && isSpacePressed.value) {
+  if (isPanning.value) {
     panX.value = e.clientX - startX.value
     panY.value = e.clientY - startY.value
   }
@@ -214,13 +235,16 @@ const handleMouseMove = (e) => {
 
 const handleMouseUp = () => {
   isPanning.value = false
+  window.removeEventListener('mousemove', handleMouseMove)
+  window.removeEventListener('mouseup', handleMouseUp)
 }
 
 // 缩放处理
 const handleWheel = (e) => {
-  // Ctrl + 滚轮 或 触控板捏合
+  e.preventDefault()
+
+  // Ctrl + 滚轮 或 触控板捏合 -> 缩放
   if (e.ctrlKey || e.metaKey) {
-    e.preventDefault()
     const delta = -e.deltaY
     const zoomFactor = delta > 0 ? 1.1 : 0.9
     let newZoom = editorStore.zoom * zoomFactor
@@ -228,9 +252,8 @@ const handleWheel = (e) => {
     if (Math.abs(newZoom - editorStore.zoom) > 0.5) {
       editorStore.setZoom(Math.round(newZoom))
     }
-  } else if (isSpacePressed.value) {
-    // 空格 + 触控板滚动时平移画布
-    e.preventDefault()
+  } else {
+    // 普通滚动 -> 平移 (支持触控板双指移动)
     panX.value -= e.deltaX
     panY.value -= e.deltaY
   }
@@ -239,8 +262,9 @@ const handleWheel = (e) => {
 // 拖拽处理
 const handleDragOver = (e) => {
   e.preventDefault()
-  const moveId = e.dataTransfer.getData('move-component-id')
-  e.dataTransfer.dropEffect = moveId ? 'move' : 'copy'
+  // 在 dragover 中无法读取 data，使用 types 判断
+  const isMove = e.dataTransfer.types.includes('move-component-id')
+  e.dataTransfer.dropEffect = isMove ? 'move' : 'copy'
 }
 
 const handleDragEnter = (e) => {
@@ -298,6 +322,8 @@ const handleDrop = (e) => {
   position: relative;
   overflow: hidden;
   background-color: var(--vscode-editor-bg);
+  width: 100%;
+  height: 100%;
 }
 
 .canvas-background {
@@ -364,5 +390,22 @@ const handleDrop = (e) => {
 .empty-icon {
   font-size: 64px;
   margin-bottom: 16px;
+}
+
+.panning-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9999;
+  /* cursor 样式通过 style 绑定动态控制 */
+}
+
+.canvas-controls {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 100;
 }
 </style>
