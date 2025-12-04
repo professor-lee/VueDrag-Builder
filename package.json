@@ -19,8 +19,8 @@
     "electron",
     "low-code"
   ],
-  "author": "VueDrag Builder Team",
-  "license": "MIT",
+  "author": "professor-lee",
+  "license": "AGPL-3.0-or-later",
   "dependencies": {
     "@vueuse/core": "^10.7.0",
     "@xterm/addon-fit": "^0.10.0",
