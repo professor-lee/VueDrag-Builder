@@ -4,13 +4,13 @@
 
 ## 项目概述
 
-VueDrag Builder 是一个基于 Electron + Vue3 + Vite 的桌面应用，旨在为前端开发者提供零配置的可视化开发体验。通过拖拽和简单配置，快速构建专业级的 Vue3 应用。
+VueDrag Builder 是一个基于 Electron + Vue3 + Vite 的桌面应用，提供组件拖拽 + 基础属性/样式编辑 + 简单代码同步的可视化搭建体验，支持导出标准 Vue3 工程。
 
 ## 技术栈
 
-- **桌面框架**: Electron 28+
+- **桌面框架**: Electron 39+
 - **前端框架**: Vue 3.4+
-- **构建工具**: Vite 5+
+- **构建工具**: Vite 7+
 - **状态管理**: Pinia 2.1+
 - **UI 组件库**: Element Plus 2.5+
 - **代码编辑器**: Monaco Editor 0.45+
@@ -19,24 +19,18 @@ VueDrag Builder 是一个基于 Electron + Vue3 + Vite 的桌面应用，旨在�
 
 ### MVP 版本 (v1.0)
 
-- ✅ 项目管理系统（新建/打开/保存）
-- ✅ IDE 风格布局（左侧组件库 + 中间画布 + 右侧属性面板）
-- ✅ 多页面支持与路由管理
-- ✅ 拖拽式组件搭建（支持组件重排与跨容器移动）
-- ✅ 画布交互优化（支持 Photoshop 风格的空格平移）
-- ✅ 组件库（容器、基础、表单、业务组件）
-- ✅ 可视化属性配置面板
-- ✅ 双向同步（可视化 ↔ 代码）
-- ✅ 实时预览与热重载
-- ✅ 导出功能（源码 + dist）
-- ✅ VSCode 风格底部面板
-- ✅ 触控板手势支持（双指平移）
-- ✅ 多端响应式预览（桌面/平板/手机）
-- ✅ 增强的代码同步（支持 v-model）
-- ✅ 代码模式高级预览（支持平移/缩放/设备切换）
-- ✅ 智能自动同步（代码模式切换回可视化模式时自动保存）
-- ✅ 视图重置与居中功能
-- ✅ 统一的深色预览背景与网格系统
+- ✅ 项目管理系统（新建/打开/保存到 `.vuedrag/builder.project.json`；旧 `.vueproject` 仅提示兼容）
+- ✅ IDE 风格布局（左侧组件库 + 中间画布 + 右侧属性/样式/事件面板）
+- ✅ 多页面支持（导出时生成路由，运行时固定 `/editor`）
+- ✅ 拖拽式组件搭建（支持跨容器插入与排序；Grid 精确格子插入未实现）
+- ✅ 组件库（容器/基础/表单组件，未含业务模板）
+- ✅ 可视化属性/样式面板（基础字段、尺寸/布局/颜色等）
+- ✅ 代码模式 + 预览（Monaco；仅解析 `<template>` 基础结构，复杂指令/脚本不回填）
+- ✅ 实时预览（代码/可视化变更即时渲染）
+- ✅ 导出源码（Vite + Vue3 工程）；构建导出依赖本地 Node/npm，界面无进度/日志
+- ✅ 底部面板占位（无实时日志挂接）
+- ⚠️ 触控板/滚轮：代码模式预览支持滚轮平移，未实现缩放/设备切换
+- ⚠️ 响应式预览、视图居中/网格背景等高级交互未实现
 
 ## 开发环境设置
 
@@ -71,22 +65,25 @@ npm run electron:build
 ```
 vue-drag-builder/
 ├── electron/              # Electron 主进程
-│   ├── main.js           # 主进程入口
-│   ├── preload.js        # 预加载脚本
-│   └── menu.js           # 菜单配置
-├── src/                  # Vue3 渲染进程
-│   ├── assets/           # 静态资源
-│   ├── components/       # 核心组件
-│   │   ├── layout/       # 布局组件
-│   │   ├── canvas/       # 画布相关
-│   │   ├── left-panel/   # 左侧面板
-│   │   └── right-panel/  # 右侧面板
-│   ├── stores/           # Pinia 状态管理
-│   ├── utils/            # 工具函数
-│   ├── views/            # 页面视图
-│   ├── router/           # 路由配置
-│   ├── App.vue           # 根组件
-│   └── main.js           # 应用入口
+│   ├── main.js            # 主进程入口
+│   ├── preload.js         # 预加载脚本
+│   └── menu.js            # 菜单配置
+├── src/                   # Vue3 渲染进程
+│   ├── assets/            # 静态资源
+│   ├── components/
+│   │   ├── layout/        # TopBar/StatusBar/LeftPanel/RightPanel/BottomPanel
+│   │   ├── left-panel/    # ComponentLibrary/PageManager/ComponentTree
+│   │   ├── canvas/        # CanvasArea/DynamicComponent
+│   │   ├── right-panel/   # PropertyPanel/StyleEditor/EventBinder
+│   │   ├── code-mode/     # CodeEditor（Monaco + 预览）
+│   │   └── terminal/      # XTerminal 占位
+│   ├── composables/       # useAutoSave/useComponentResize/useDragAndDrop/useProjectExport
+│   ├── stores/            # project/canvas/editor/history/errors
+│   ├── utils/             # codeGenerator/componentRegistry/fileExporter
+│   ├── views/             # WelcomeView/EditorView
+│   ├── router/            # 路由配置
+│   ├── App.vue            # 根组件
+│   └── main.js            # 应用入口
 ├── index.html
 ├── package.json
 └── vite.config.js
@@ -109,6 +106,8 @@ vue-drag-builder/
 - **PropertyPanel**: 属性配置面板
 - **StyleEditor**: 样式编辑器
 - **EventBinder**: 事件绑定器
+- **CodeEditor**: 代码模式（Monaco + 预览）
+- **BottomPanel/XTerminal**: 底部面板占位
 
 ## 快捷键
 
@@ -128,7 +127,7 @@ vue-drag-builder/
 - [x] 响应式预览与设备切换
 - [x] 触控板手势与画布交互优化
 - [x] 完善的预览体验 (缩放/平移/触控板)
-- [ ] 导出功能实现
+- [x] 导出功能（源码；构建依赖本地 Node/npm，界面无进度/日志）
 - [ ] 表单校验库集成
 - [ ] 主题系统
 - [ ] 插件系统
@@ -139,4 +138,4 @@ vue-drag-builder/
 
 ## 许可证
 
-MIT
+AGPL-3.0-or-later
