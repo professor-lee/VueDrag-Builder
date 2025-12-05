@@ -11,6 +11,10 @@
         <el-icon><Warning /></el-icon>
         <span>{{ errorsStore.warningCount }}</span>
       </div>
+      <div class="status-item" :class="{ active: editorStore.logicBoardVisible }" @click="handleLogicClick">
+        <span>Logic:</span>
+        <span>{{ logicSummary }}</span>
+      </div>
     </div>
     <div class="status-right">
       <div class="status-item">
@@ -30,12 +34,30 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useEditorStore } from '@/stores/editor'
 import { useErrorsStore } from '@/stores/errors'
+import { useCanvasStore } from '@/stores/canvas'
 import { Platform, CircleClose, Warning, Bell } from '@element-plus/icons-vue'
 
 const editorStore = useEditorStore()
 const errorsStore = useErrorsStore()
+const canvasStore = useCanvasStore()
+
+const logicSummary = computed(() => {
+  const page = canvasStore.pages.find(p => p.id === canvasStore.currentPageId)
+  if (!page || !Array.isArray(page.composables) || page.composables.length === 0) {
+    return '无'
+  }
+  return page.composables.map(item => item.name).join(', ')
+})
+
+const handleLogicClick = () => {
+  if (!canvasStore.currentPageId) {
+    return
+  }
+  editorStore.openLogicBoard(canvasStore.currentPageId)
+}
 
 const togglePanel = (tab) => {
   // Just a hint/toggle, logic matches VS Code (toggles panel visibility)
@@ -79,6 +101,11 @@ const togglePanel = (tab) => {
 
 .status-item:hover {
   background-color: var(--vscode-statusbar-item-hover);
+}
+
+.status-item.active {
+  background-color: var(--vscode-statusbar-item-hover);
+  color: var(--vscode-statusbar-activeFg, var(--vscode-statusbar-fg));
 }
 
 .status-item .el-icon {

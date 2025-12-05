@@ -31,7 +31,8 @@
         <!-- 中间画布 -->
         <section class="pane center-pane">
           <div class="canvas-container">
-            <CanvasArea />
+            <CanvasArea v-if="!editorStore.logicBoardVisible" />
+            <LogicBoard v-else />
           </div>
           <BottomPanel v-if="editorStore.terminalVisible" class="panel-in-center" />
         </section>
@@ -91,6 +92,7 @@ import RightPanel from '@/components/layout/RightPanel.vue'
 import BottomPanel from '@/components/layout/BottomPanel.vue'
 import CodeEditor from '@/components/code-mode/CodeEditor.vue'
 import StatusBar from '@/components/layout/StatusBar.vue'
+import LogicBoard from '@/components/logic/LogicBoard.vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -117,6 +119,9 @@ const resizeTarget = ref(null) // 'left' or 'right'
 // 切换视图模式
 const handleToggleView = (view) => {
   editorStore.setMode(view)
+  if (view === 'code') {
+    editorStore.closeLogicBoard()
+  }
 }
 
 // 面板调整逻辑
@@ -248,7 +253,7 @@ const handleMenuAbout = () => {
     `
     <div style="text-align: center;">
       <h3>VueDrag Builder</h3>
-      <p>版本: v1.0.0</p>
+      <p>版本: v1.5.3</p>
       <p>零配置的Vue3可视化开发平台</p>
       <p>Copyright © 2025 professor-lee</p>
     </div>

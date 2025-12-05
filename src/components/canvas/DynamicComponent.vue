@@ -76,7 +76,33 @@
       :class="dragOverPosition"
     ></div>
 
-    <!-- 递归渲染子组件 -->
+    <!-- 递归渲染子组件 (插槽模式) -->
+    <template v-else-if="hasSlotLayout">
+      <div
+        v-for="slot in componentSlots"
+        :key="slot"
+        class="slot-zone"
+        v-show="shouldShowSlot(slot)"
+        :class="{ 'slot-active': slotDragOver === slot }"
+        @dragover="handleSlotDragOver(slot, $event)"
+        @dragleave="handleSlotDragLeave(slot, $event)"
+        @drop="handleSlotDrop(slot, $event)"
+      >
+        <div class="slot-title">#{{ slot }}</div>
+        <div class="slot-body">
+          <template v-if="slotChildren[slot] && slotChildren[slot].length">
+            <DynamicComponent
+              v-for="child in slotChildren[slot]"
+              :key="child.id"
+              :component="child"
+            />
+          </template>
+          <div v-else class="empty-slot-hint">拖拽到 {{ slot }}</div>
+        </div>
+      </div>
+    </template>
+
+    <!-- 递归渲染子组件 (普通) -->
     <template v-else-if="hasChildren">
       <template v-for="(child, idx) in component.children" :key="child.id || idx">
         <DynamicComponent
@@ -179,6 +205,40 @@ const isContainer = computed(() => {
 const hasChildren = computed(() => {
   return props.component.children && Array.isArray(props.component.children) && props.component.children.length > 0
 })
+
+// 插槽定义
+const componentSlots = computed(() => {
+  const meta = componentRegistry.components?.[props.component.type]
+  return meta?.slots || []
+})
+
+const hasSlotLayout = computed(() => componentSlots.value && componentSlots.value.length > 0)
+const slotDragOver = ref(null)
+
+const slotChildren = computed(() => {
+  const buckets = {}
+  componentSlots.value.forEach(slot => { buckets[slot] = [] })
+  if (Array.isArray(props.component.children)) {
+    props.component.children.forEach(childRef => {
+      const child = getChildComponent(childRef)
+      if (!child) return
+      const slotKey = child.slotName || 'default'
+      if (!buckets[slotKey]) buckets[slotKey] = []
+      buckets[slotKey].push(child)
+    })
+  }
+  return buckets
+})
+
+// 判断插槽是否应该显示
+const shouldShowSlot = (slot) => {
+  // 如果插槽有内容，始终显示
+  if (slotChildren.value[slot] && slotChildren.value[slot].length > 0) return true
+  // 如果正在拖拽经过容器，显示所有插槽以便放置
+  if (isDragOverContainer.value) return true
+  // 否则隐藏空插槽，避免影响高度
+  return false
+}
 
 // 组件文本内容
 const componentText = computed(() => {
@@ -308,7 +368,8 @@ const handleDragOver = (e) => {
   
   // 根据操作类型设置 dropEffect
   const isMove = e.dataTransfer.types.includes('move-component-id')
-  e.dataTransfer.dropEffect = isMove ? 'move' : 'copy'
+  const isComposable = e.dataTransfer.types.includes('composable') || e.dataTransfer.getData('type') === 'composable'
+  e.dataTransfer.dropEffect = isComposable ? 'copy' : (isMove ? 'move' : 'copy')
 
   // 计算鼠标在组件中的相对位置，决定插入位置
   const rect = e.currentTarget.getBoundingClientRect()
@@ -350,8 +411,90 @@ const handleDragLeave = (e) => {
   e.stopPropagation()
   
   if (e.target === e.currentTarget) {
+    // 如果进入的是子元素（如插槽区域），不要取消高亮
+    const relatedTarget = e.relatedTarget
+    if (relatedTarget && e.currentTarget.contains(relatedTarget)) {
+      return
+    }
     isDragOverContainer.value = false
     dragOverPosition.value = null
+  }
+}
+
+const getSlotInsertIndex = (slotName) => {
+  const parent = canvasStore.getComponentById(props.component.id)
+  if (!parent || !Array.isArray(parent.children)) return 0
+  const matches = parent.children
+    .map((cid, idx) => {
+      const child = canvasStore.getComponentById(cid)
+      return { child, idx }
+    })
+    .filter(entry => (entry.child?.slotName || 'default') === slotName)
+  if (matches.length === 0) return parent.children.length
+  return matches[matches.length - 1].idx + 1
+}
+
+const handleSlotDragOver = (slotName, e) => {
+  e.preventDefault()
+  e.stopPropagation()
+  slotDragOver.value = slotName
+  // 保持容器高亮，防止插槽消失
+  isDragOverContainer.value = true
+}
+
+const handleSlotDragLeave = (slotName, e) => {
+  e.preventDefault()
+  e.stopPropagation()
+  if (slotDragOver.value === slotName) {
+    slotDragOver.value = null
+  }
+}
+
+const handleSlotDrop = (slotName, e) => {
+  e.preventDefault()
+  e.stopPropagation()
+  slotDragOver.value = null
+  // 拖放结束后，重置容器状态
+  isDragOverContainer.value = false
+
+  const composableStr = e.dataTransfer.getData('composable')
+  if (composableStr) {
+    try {
+      const item = JSON.parse(composableStr)
+      canvasStore.addComposable({
+        name: item.name,
+        source: item.source,
+        params: item.params || [],
+        returns: item.returns || [],
+        bindings: [],
+      })
+      editorStore.openLogicBoard(canvasStore.currentPageId)
+      ElMessage.success(`已添加逻辑 ${item.name}`)
+    } catch (err) {
+      console.error('添加逻辑失败', err)
+      ElMessage.error('添加逻辑失败')
+    }
+    return
+  }
+
+  const moveId = e.dataTransfer.getData('move-component-id')
+  if (moveId) {
+    const targetIndex = getSlotInsertIndex(slotName)
+    canvasStore.moveComponent(moveId, props.component.id, targetIndex, slotName)
+    return
+  }
+
+  try {
+    const componentData = JSON.parse(e.dataTransfer.getData('component'))
+    if (!componentData || !componentData.type) return
+    const targetIndex = getSlotInsertIndex(slotName)
+    const newId = canvasStore.addComponent({ ...componentData, slotName }, props.component.id, targetIndex)
+    if (newId) {
+      editorStore.selectComponent(newId)
+      ElMessage.success(`已添加 ${componentData.displayName}`)
+    }
+  } catch (err) {
+    console.error('添加组件失败:', err)
   }
 }
 
@@ -361,6 +504,27 @@ const handleDrop = (e) => {
   isDragOverContainer.value = false
   const position = dragOverPosition.value
   dragOverPosition.value = null
+
+  // 处理逻辑拖入，跳转逻辑编排视图
+  const composableStr = e.dataTransfer.getData('composable')
+  if (composableStr) {
+    try {
+      const item = JSON.parse(composableStr)
+      canvasStore.addComposable({
+        name: item.name,
+        source: item.source,
+        params: item.params || [],
+        returns: item.returns || [],
+        bindings: [],
+      })
+      editorStore.openLogicBoard(canvasStore.currentPageId)
+      ElMessage.success(`已添加逻辑 ${item.name}`)
+    } catch (err) {
+      console.error('添加逻辑失败', err)
+      ElMessage.error('添加逻辑失败')
+    }
+    return
+  }
 
   // 处理组件移动（重新排序）
   const moveId = e.dataTransfer.getData('move-component-id')
@@ -540,5 +704,59 @@ const handleDrop = (e) => {
   height: auto;
   background-color: rgba(64, 158, 255, 0.1);
   border: 2px solid var(--color-primary);
+}
+
+.slot-zone {
+  position: relative;
+  border: 1px dashed transparent;
+  padding: 0;
+  margin-bottom: 0;
+  background: transparent;
+  transition: all 0.2s;
+}
+
+.is-container.drag-over .slot-zone,
+.slot-zone.slot-active {
+  border-color: var(--vscode-border);
+  padding: 8px;
+  margin-bottom: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.slot-zone.slot-active {
+  border-color: var(--vscode-focusBorder);
+  background: rgba(64, 158, 255, 0.1);
+}
+
+.slot-title {
+  position: absolute;
+  top: -10px;
+  left: 8px;
+  font-size: 10px;
+  color: var(--vscode-fg-muted);
+  background: var(--vscode-editor-background);
+  padding: 0 4px;
+  display: none;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.is-container.drag-over .slot-title,
+.slot-zone.slot-active .slot-title {
+  display: block;
+}
+
+.slot-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.empty-slot-hint {
+  padding: 12px;
+  text-align: center;
+  color: rgba(128, 128, 128, 0.7);
+  border: 1px dashed var(--vscode-border);
+  background: rgba(255, 255, 255, 0.03);
 }
 </style>

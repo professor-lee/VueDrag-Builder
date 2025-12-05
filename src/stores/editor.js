@@ -13,6 +13,12 @@ export const useEditorStore = defineStore('editor', {
     terminalPreferredTab: 'terminal',
     cursorLine: 1,
     cursorColumn: 1,
+    logicBoardVisible: false,
+    logicBoardPageId: null,
+    
+    // 响应式数据管理
+    reactiveState: [], // { name, type: 'ref'|'reactive', value: any }
+    computedDefs: [], // { name, code: string }
   }),
 
   getters: {
@@ -87,6 +93,49 @@ export const useEditorStore = defineStore('editor', {
       } else {
         this.openTerminal(tab)
       }
+    },
+
+    // 逻辑编排视图控制
+    openLogicBoard(pageId = null) {
+      this.logicBoardVisible = true
+      this.logicBoardPageId = pageId
+    },
+    closeLogicBoard() {
+      this.logicBoardVisible = false
+    },
+    toggleLogicBoard(pageId = null) {
+      if (this.logicBoardVisible) {
+        this.closeLogicBoard()
+      } else {
+        this.openLogicBoard(pageId)
+      }
+    },
+    setLogicBoardPage(pageId) {
+      this.logicBoardPageId = pageId
+    },
+
+    // === 数据管理 Actions ===
+    addReactiveItem(item) {
+      this.reactiveState.push(item)
+    },
+    updateReactiveItem(index, item) {
+      if (index >= 0 && index < this.reactiveState.length) {
+        this.reactiveState[index] = item
+      }
+    },
+    removeReactiveItem(index) {
+      this.reactiveState.splice(index, 1)
+    },
+    addComputed(item) {
+      this.computedDefs.push(item)
+    },
+    updateComputed(index, item) {
+      if (index >= 0 && index < this.computedDefs.length) {
+        this.computedDefs[index] = item
+      }
+    },
+    removeComputed(index) {
+      this.computedDefs.splice(index, 1)
     },
   },
 })

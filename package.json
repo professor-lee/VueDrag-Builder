@@ -1,6 +1,6 @@
 {
   "name": "vue-drag-builder",
-  "version": "1.0.0",
+  "version": "1.5.3",
   "description": "零配置的Vue3可视化开发平台",
   "main": "electron/main.js",
   "type": "module",

@@ -34,6 +34,8 @@ export const componentMap = {
   Text: 'span',
   Heading: 'h2',
   Link: 'a',
+  Teleport: 'teleport',
+  Suspense: 'Suspense',
 }
 
 // 组件定义
@@ -47,6 +49,8 @@ export const components = {
     type: 'Container',
     defaultProps: {},
     canHaveChildren: true,
+    slots: ['header', 'default', 'footer'],
+    package: 'builtin',
   },
 
   Flex: {
@@ -57,6 +61,8 @@ export const components = {
     type: 'Flex',
     defaultProps: {},
     canHaveChildren: true,
+    slots: ['header', 'default', 'footer'],
+    package: 'builtin',
   },
 
   Grid: {
@@ -67,6 +73,8 @@ export const components = {
     type: 'Grid',
     defaultProps: {},
     canHaveChildren: true,
+    slots: ['header', 'default', 'footer'],
+    package: 'builtin',
   },
 
   Card: {
@@ -79,6 +87,8 @@ export const components = {
       header: '卡片标题',
     },
     canHaveChildren: true,
+    slots: ['header', 'default', 'footer'],
+    package: 'element-plus',
   },
 
   // === 基础组件 ===
@@ -94,6 +104,7 @@ export const components = {
       size: 'default',
     },
     canHaveChildren: false,
+    package: 'element-plus',
   },
 
   Text: {
@@ -106,6 +117,7 @@ export const components = {
       text: '文本内容',
     },
     canHaveChildren: false,
+    package: 'builtin',
   },
 
   Heading: {
@@ -118,6 +130,7 @@ export const components = {
       text: '这是标题',
     },
     canHaveChildren: false,
+    package: 'builtin',
   },
 
   Image: {
@@ -138,6 +151,7 @@ export const components = {
       overflow: 'hidden',
     },
     canHaveChildren: false,
+    package: 'element-plus',
   },
 
   Divider: {
@@ -148,6 +162,7 @@ export const components = {
     type: 'Divider',
     defaultProps: {},
     canHaveChildren: false,
+    package: 'element-plus',
   },
 
   Link: {
@@ -161,6 +176,7 @@ export const components = {
       href: '#',
     },
     canHaveChildren: false,
+    package: 'element-plus',
   },
 
   // === 表单组件 ===
@@ -175,6 +191,8 @@ export const components = {
       modelValue: '',
     },
     canHaveChildren: false,
+    vModelProp: 'modelValue',
+    package: 'element-plus',
   },
 
   Textarea: {
@@ -190,6 +208,8 @@ export const components = {
       rows: 4,
     },
     canHaveChildren: false,
+    vModelProp: 'modelValue',
+    package: 'element-plus',
   },
 
   Select: {
@@ -202,6 +222,8 @@ export const components = {
       placeholder: '请选择',
     },
     canHaveChildren: false,
+    vModelProp: 'modelValue',
+    package: 'element-plus',
   },
 
   Checkbox: {
@@ -214,6 +236,8 @@ export const components = {
       label: '复选框',
     },
     canHaveChildren: false,
+    vModelProp: 'modelValue',
+    package: 'element-plus',
   },
 
   Radio: {
@@ -226,6 +250,8 @@ export const components = {
       label: '单选框',
     },
     canHaveChildren: false,
+    vModelProp: 'modelValue',
+    package: 'element-plus',
   },
 
   Switch: {
@@ -236,6 +262,8 @@ export const components = {
     type: 'Switch',
     defaultProps: {},
     canHaveChildren: false,
+    vModelProp: 'modelValue',
+    package: 'element-plus',
   },
 
   DatePicker: {
@@ -248,6 +276,8 @@ export const components = {
       placeholder: '选择日期',
     },
     canHaveChildren: false,
+    vModelProp: 'modelValue',
+    package: 'element-plus',
   },
 
   // === 媒体组件 ===
@@ -262,6 +292,7 @@ export const components = {
       size: 24,
     },
     canHaveChildren: false,
+    package: 'element-plus',
   },
 
   Video: {
@@ -276,6 +307,35 @@ export const components = {
       width: '100%',
     },
     canHaveChildren: false,
+    package: 'builtin',
+  },
+
+  // === 结构组件 / Vue 核心 ===
+  Teleport: {
+    name: 'Teleport',
+    displayName: 'Teleport',
+    category: '结构组件',
+    icon: '🛰️',
+    type: 'Teleport',
+    defaultProps: {
+      to: 'body',
+      disabled: false,
+    },
+    canHaveChildren: true,
+    slots: ['default'],
+    package: 'vue',
+  },
+
+  Suspense: {
+    name: 'Suspense',
+    displayName: 'Suspense',
+    category: '结构组件',
+    icon: '⏳',
+    type: 'Suspense',
+    defaultProps: {},
+    canHaveChildren: true,
+    slots: ['default', 'fallback'],
+    package: 'vue',
   },
 }
 
@@ -307,6 +367,10 @@ export const componentsByCategory = {
   媒体组件: [
     components.Icon,
     components.Video,
+  ],
+  结构组件: [
+    components.Teleport,
+    components.Suspense,
   ],
 }
 

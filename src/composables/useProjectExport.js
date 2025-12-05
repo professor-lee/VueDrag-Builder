@@ -2,18 +2,22 @@ import { ElLoading, ElMessage, ElMessageBox } from 'element-plus'
 import { exportProject, exportAndBuild, exportProjectArchive, exportBuildArchive } from '@/utils/fileExporter'
 import { useProjectStore } from '@/stores/project'
 import { useCanvasStore } from '@/stores/canvas'
+import { useEditorStore } from '@/stores/editor'
 
-function buildProjectPayload(projectStore, canvasStore) {
+function buildProjectPayload(projectStore, canvasStore, editorStore) {
   return {
     ...projectStore.projectSnapshot,
     pages: canvasStore.pages,
     globalStyles: canvasStore.globalStyles,
+    reactiveState: editorStore.reactiveState || [],
+    computedDefs: editorStore.computedDefs || [],
   }
 }
 
 export function useProjectExport() {
   const projectStore = useProjectStore()
   const canvasStore = useCanvasStore()
+  const editorStore = useEditorStore()
 
   const ensureProjectAvailable = () => {
     if (!projectStore.hasProject) {
@@ -47,7 +51,7 @@ export function useProjectExport() {
 
     try {
       return await withLoading('正在导出源代码...', async () => {
-        const project = buildProjectPayload(projectStore, canvasStore)
+        const project = buildProjectPayload(projectStore, canvasStore, editorStore)
         const result = await exportProject(project)
 
         if (!result.success) {
@@ -79,7 +83,7 @@ export function useProjectExport() {
 
     try {
       return await withLoading('正在生成源代码 ZIP...', async loading => {
-        const project = buildProjectPayload(projectStore, canvasStore)
+        const project = buildProjectPayload(projectStore, canvasStore, editorStore)
         const result = await exportProjectArchive(project, ({ message, progress }) => {
           loading.setText(`${message} (${progress}%)`)
         })
@@ -113,7 +117,7 @@ export function useProjectExport() {
 
     try {
       return await withLoading('正在导出并构建项目...', async loading => {
-        const project = buildProjectPayload(projectStore, canvasStore)
+        const project = buildProjectPayload(projectStore, canvasStore, editorStore)
         const result = await exportAndBuild(project, ({ message, progress }) => {
           loading.setText(`${message} (${progress}%)`)
         })
@@ -147,7 +151,7 @@ export function useProjectExport() {
 
     try {
       return await withLoading('正在构建并打包 ZIP...', async loading => {
-        const project = buildProjectPayload(projectStore, canvasStore)
+        const project = buildProjectPayload(projectStore, canvasStore, editorStore)
         const result = await exportBuildArchive(project, ({ message, progress }) => {
           loading.setText(`${message} (${progress}%)`)
         })

@@ -17,7 +17,7 @@ VueDrag Builder 是一个基于 Electron + Vue3 + Vite 的桌面应用，提供�
 
 ## 功能特性
 
-### MVP 版本 (v1.0)
+### MVP 版本 (v1.5.3)
 
 - ✅ 项目管理系统（新建/打开/保存到 `.vuedrag/builder.project.json`；旧 `.vueproject` 仅提示兼容）
 - ✅ IDE 风格布局（左侧组件库 + 中间画布 + 右侧属性/样式/事件面板）

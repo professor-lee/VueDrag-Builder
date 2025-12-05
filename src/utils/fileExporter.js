@@ -61,6 +61,7 @@ export function generateProjectFileMap(project) {
  */
 function generatePackageJson(project) {
   const packageName = project.name || project.projectName || 'vue-drag-app'
+  const needVueUse = projectUsesVueUse(project)
   return {
     name: packageName,
     version: '1.0.0',
@@ -75,6 +76,7 @@ function generatePackageJson(project) {
       'vue-router': '^4.2.5',
       'element-plus': '^2.5.0',
       '@element-plus/icons-vue': '^2.3.1',
+      ...(needVueUse ? { '@vueuse/core': '^10.7.0' } : {}),
     },
     devDependencies: {
       '@vitejs/plugin-vue': '^5.0.0',
@@ -83,6 +85,11 @@ function generatePackageJson(project) {
       'unplugin-auto-import': '^0.17.3',
     },
   }
+}
+
+function projectUsesVueUse(project) {
+  if (!project || !Array.isArray(project.pages)) return false
+  return project.pages.some(page => Array.isArray(page.composables) && page.composables.some(c => c?.source === '@vueuse/core'))
 }
 
 /**
@@ -96,6 +103,7 @@ import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
 export default defineConfig({
+  base: './',
   plugins: [
     vue(),
     AutoImport({
@@ -227,14 +235,14 @@ function generateRouter(project) {
     )
     .join(',\n')
 
-  return `import { createRouter, createWebHistory } from 'vue-router'
+  return `import { createRouter, createWebHashHistory } from 'vue-router'
 
 const routes = [
 ${routesStr}
 ]
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: createWebHashHistory(),
   routes
 })
 

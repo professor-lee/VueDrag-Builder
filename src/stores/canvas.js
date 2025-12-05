@@ -111,6 +111,12 @@ export const useCanvasStore = defineStore('canvas', {
       
       // 确保每个页面的 componentTree 是数组
       this.pages.forEach(page => {
+        if (!Array.isArray(page.composables)) {
+          page.composables = []
+        }
+        page.composables.forEach(comp => {
+          if (!Array.isArray(comp.bindings)) comp.bindings = []
+        })
         if (!Array.isArray(page.componentTree)) {
           page.componentTree = []
         }
@@ -121,7 +127,12 @@ export const useCanvasStore = defineStore('canvas', {
           }
           if (!comp.props) comp.props = {}
           if (!comp.styles) comp.styles = {}
+          if (!comp.directives) comp.directives = {} // 初始化指令
           if (!Array.isArray(comp.events)) comp.events = []
+          if (typeof comp.slotName === 'undefined') comp.slotName = null
+          if (!comp.logicBindings || typeof comp.logicBindings !== 'object') {
+            comp.logicBindings = {}
+          }
         })
 
         if (!Array.isArray(page.rootOrder)) {
@@ -145,6 +156,7 @@ export const useCanvasStore = defineStore('canvas', {
         route,
         componentTree: [],
         rootOrder: [],
+        composables: [],
       }
       if (!Array.isArray(this.pages)) {
         this.pages = []
@@ -179,6 +191,8 @@ export const useCanvasStore = defineStore('canvas', {
     switchPage(pageId) {
       if (this.pages.find(p => p.id === pageId)) {
         this.currentPageId = pageId
+        const editorStore = useEditorStore()
+        editorStore.setLogicBoardPage(pageId)
       }
     },
 
@@ -199,9 +213,12 @@ export const useCanvasStore = defineStore('canvas', {
         parentId,
         props: cloneDeep(componentData.defaultProps || componentData.props || {}),
         styles: cloneDeep(componentData.styles || {}),
+        directives: cloneDeep(componentData.directives || {}),
         events: componentData.events || [],
         children: [],
         locked: false,
+        slotName: componentData.slotName || null,
+        logicBindings: componentData.logicBindings || {},
       }
 
       // 添加到父组件的children数组或根序列
@@ -277,6 +294,9 @@ export const useCanvasStore = defineStore('canvas', {
       // 从componentTree中移除
       page.componentTree = page.componentTree.filter(c => !toDelete.includes(c.id))
 
+      // 清理逻辑绑定引用
+      this.cleanupBindingsForComponents(page, toDelete)
+
       // 取消选中
       const editorStore = useEditorStore()
       if (toDelete.includes(editorStore.selectedComponentId)) {
@@ -322,7 +342,7 @@ export const useCanvasStore = defineStore('canvas', {
     },
 
     // 移动组件
-    moveComponent(id, newParentId, newIndex) {
+    moveComponent(id, newParentId, newIndex, slotName = undefined) {
       const page = this.pages.find(p => p.id === this.currentPageId)
       if (!page) return
 
@@ -379,9 +399,13 @@ export const useCanvasStore = defineStore('canvas', {
             : newParent.children.length
           newParent.children.splice(targetIndex, 0, id)
           comp.parentId = newParentId
+          if (typeof slotName !== 'undefined') {
+            comp.slotName = slotName
+          }
         }
       } else {
         comp.parentId = null
+        comp.slotName = null
         insertIntoRootOrder()
       }
 
@@ -413,6 +437,123 @@ export const useCanvasStore = defineStore('canvas', {
       this.globalStyles = css
       const projectStore = useProjectStore()
       projectStore.markDirty()
+    },
+
+    // === 逻辑 (composables) 管理 ===
+    addComposable(composableData) {
+      const page = this.pages.find(p => p.id === this.currentPageId)
+      if (!page) return null
+
+      const composable = {
+        id: uuidv4(),
+        name: composableData.name,
+        source: composableData.source || '',
+        params: Array.isArray(composableData.params) ? composableData.params : [],
+        returns: Array.isArray(composableData.returns) ? composableData.returns : [],
+        bindings: Array.isArray(composableData.bindings) ? composableData.bindings : [],
+      }
+
+      page.composables.push(composable)
+
+      const historyStore = useHistoryStore()
+      historyStore.record({
+        type: 'add-composable',
+        pageId: this.currentPageId,
+        composable: cloneDeep(composable),
+      })
+
+      const projectStore = useProjectStore()
+      projectStore.markDirty()
+      return composable.id
+    },
+
+    updateComposable(id, updates) {
+      const page = this.pages.find(p => p.id === this.currentPageId)
+      if (!page) return
+      const target = page.composables.find(c => c.id === id)
+      if (!target) return
+
+      const oldData = cloneDeep(target)
+      Object.assign(target, updates)
+
+      const historyStore = useHistoryStore()
+      historyStore.record({
+        type: 'update-composable',
+        pageId: this.currentPageId,
+        composableId: id,
+        oldData,
+        newData: cloneDeep(target),
+      })
+
+      const projectStore = useProjectStore()
+      projectStore.markDirty()
+    },
+
+    removeComposable(id, { force = false } = {}) {
+      const page = this.pages.find(p => p.id === this.currentPageId)
+      if (!page) return false
+      const idx = page.composables.findIndex(c => c.id === id)
+      if (idx === -1) return false
+
+      const target = page.composables[idx]
+      if (!force && Array.isArray(target.bindings) && target.bindings.length > 0) {
+        return false
+      }
+
+      const deleted = page.composables.splice(idx, 1)[0]
+
+      // 清理组件上的逻辑绑定引用
+      page.componentTree.forEach(comp => {
+        if (!comp.logicBindings) return
+        const next = { ...comp.logicBindings }
+        Object.entries(next).forEach(([key, val]) => {
+          if (val?.composableId === id) {
+            delete next[key]
+            this.syncLogicBinding(comp.id, key, null)
+          }
+        })
+        comp.logicBindings = next
+      })
+
+      const historyStore = useHistoryStore()
+      historyStore.record({
+        type: 'remove-composable',
+        pageId: this.currentPageId,
+        composable: cloneDeep(deleted),
+      })
+
+      const projectStore = useProjectStore()
+      projectStore.markDirty()
+      return true
+    },
+
+    syncLogicBinding(componentId, propKey, binding) {
+      const page = this.pages.find(p => p.id === this.currentPageId)
+      if (!page) return
+
+      page.composables.forEach(comp => {
+        if (!Array.isArray(comp.bindings)) comp.bindings = []
+        comp.bindings = comp.bindings.filter(b => !(b.componentId === componentId && b.prop === propKey))
+      })
+
+      if (binding && binding.composableId) {
+        const target = page.composables.find(c => c.id === binding.composableId)
+        if (target) {
+          if (!Array.isArray(target.bindings)) target.bindings = []
+          target.bindings.push({ componentId, prop: propKey, returnKey: binding.returnKey })
+        }
+      }
+
+      const projectStore = useProjectStore()
+      projectStore.markDirty()
+    },
+
+    cleanupBindingsForComponents(page, componentIds) {
+      if (!page || !Array.isArray(page.composables)) return
+      page.composables.forEach(comp => {
+        if (!Array.isArray(comp.bindings)) comp.bindings = []
+        comp.bindings = comp.bindings.filter(b => !componentIds.includes(b.componentId))
+      })
     },
   },
 })

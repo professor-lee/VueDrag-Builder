@@ -12,9 +12,11 @@ import { cloneDeep } from 'lodash-es'
  * @returns {string} Vue SFC 代码
  */
 export function generateVueSFC(page, project = {}) {
-  const template = generateTemplate(page.components)
-  const script = generateScript(page, project)
-  const style = generateStyle(page.components, page.globalStyles)
+  const componentTree = resolveComponentTree(page)
+  const logicResolver = buildLogicResolver(page?.composables || [])
+  const template = generateTemplate(componentTree, logicResolver)
+  const script = generateScript(componentTree, page, project)
+  const style = generateStyle(componentTree, page.globalStyles)
 
   return `<template>
 ${template}
@@ -35,14 +37,14 @@ ${style}
  * @param {Array} components - 组件树
  * @returns {string} template 代码
  */
-export function generateTemplate(components) {
+export function generateTemplate(components, logicResolver) {
   if (!components || !Array.isArray(components) || components.length === 0) {
     return '  <div class="page-container">\n    <!-- 页面内容 -->\n  </div>'
   }
 
   const lines = ['  <div class="page-container">']
   components.forEach(component => {
-    lines.push(...generateComponentTemplate(component, 2))
+    lines.push(...generateComponentTemplate(component, 2, logicResolver))
   })
   lines.push('  </div>')
 
@@ -55,7 +57,7 @@ export function generateTemplate(components) {
  * @param {number} indent - 缩进级别
  * @returns {Array} template 行数组
  */
-function generateComponentTemplate(component, indent = 0) {
+function generateComponentTemplate(component, indent = 0, logicResolver) {
   const lines = []
   const indentStr = '  '.repeat(indent)
   
@@ -63,7 +65,7 @@ function generateComponentTemplate(component, indent = 0) {
   const tagName = getTemplateTagName(component.type)
   
   // 构建属性字符串
-  const attrs = generateAttributes(component)
+  const attrs = generateAttributes(component, logicResolver)
   const attrStr = attrs.length > 0 ? ' ' + attrs.join(' ') : ''
   
   // 判断是否有子组件或文本内容
@@ -83,11 +85,33 @@ function generateComponentTemplate(component, indent = 0) {
     
     // 递归渲染子组件
     if (hasChildren && Array.isArray(component.children)) {
-      component.children.forEach(child => {
-        if (child && typeof child === 'object') {
-          lines.push(...generateComponentTemplate(child, indent + 1))
-        }
-      })
+      const slotGroups = groupChildrenBySlot(component.children)
+      if (slotGroups) {
+        slotGroups.forEach(group => {
+          const children = group.children || []
+          if (group.slot === 'default') {
+            children.forEach(child => {
+              if (child && typeof child === 'object') {
+                lines.push(...generateComponentTemplate(child, indent + 1, logicResolver))
+              }
+            })
+          } else {
+            lines.push(`${indentStr}  <template #${group.slot}>`)
+            children.forEach(child => {
+              if (child && typeof child === 'object') {
+                lines.push(...generateComponentTemplate(child, indent + 2, logicResolver))
+              }
+            })
+            lines.push(`${indentStr}  </template>`)
+          }
+        })
+      } else {
+        component.children.forEach(child => {
+          if (child && typeof child === 'object') {
+            lines.push(...generateComponentTemplate(child, indent + 1, logicResolver))
+          }
+        })
+      }
     }
     
     lines.push(`${indentStr}</${tagName}>`)
@@ -116,6 +140,8 @@ function getTemplateTagName(type) {
     'Checkbox': 'el-checkbox',
     'Radio': 'el-radio',
     'Switch': 'el-switch',
+    'Teleport': 'teleport',
+    'Suspense': 'Suspense',
   }
   return tagMap[type] || 'div'
 }
@@ -132,45 +158,64 @@ function isSelfClosingTag(type) {
 /**
  * 生成组件属性
  */
-function generateAttributes(component) {
+function generateAttributes(component, logicResolver) {
   const attrs = []
+  const directives = component.directives || {}
   
-  // 添加 class
+  // 1. 指令 (v-if, v-show, v-for)
+  if (directives.vFor) {
+    attrs.push(`v-for="${directives.vFor}"`)
+    if (directives.vForKey) {
+      attrs.push(`:key="${directives.vForKey}"`)
+    }
+  }
+  
+  if (directives.vIf) attrs.push(`v-if="${directives.vIf}"`)
+  else if (directives.vShow) attrs.push(`v-show="${directives.vShow}"`)
+  
+  // 2. 双向绑定 (v-model)
+  if (directives.vModel) {
+    let vModelStr = `v-model`
+    if (directives.vModelModifiers && directives.vModelModifiers.length > 0) {
+      vModelStr += '.' + directives.vModelModifiers.join('.')
+    }
+    vModelStr += `="${directives.vModel}"`
+    attrs.push(vModelStr)
+  }
+  
+  // 3. Class
   if (component.props?.className) {
     attrs.push(`class="${component.props.className}"`)
   }
   
-  // 添加通用属性
+  // 4. 常规属性 (Props)
   const props = component.props || {}
   Object.entries(props).forEach(([key, value]) => {
-    if (key === 'text' || key === 'label' || key === 'className') {
-      return // 跳过特殊处理的属性
-    }
+    if (['text', 'label', 'className'].includes(key)) return
+    if (directives.vModel && key === 'modelValue') return
+    if (component.logicBindings && component.logicBindings[key]) return
     
-    // 布尔值
     if (typeof value === 'boolean') {
       if (value) attrs.push(`:${key}="true"`)
     }
-    // 数字
     else if (typeof value === 'number') {
       attrs.push(`:${key}="${value}"`)
     }
-    // 字符串
     else if (value) {
       attrs.push(`${key}="${escapeAttr(String(value))}"`)
     }
   })
   
-  // 添加事件绑定
+  // 5. 事件绑定
   if (component.events) {
     Object.entries(component.events).forEach(([event, handler]) => {
       if (handler && handler.action) {
-        attrs.push(`@${event}="handle${capitalizeFirst(event)}"`)
+        attrs.push(`@${event}="handle${capitalizeFirst(event)}_${component.id.slice(0, 4)}"`)
       }
     })
   }
   
-  // 添加内联样式 (如果有样式)
+  // 6. 内联样式
   if (component.styles && Object.keys(component.styles).length > 0) {
     const styleStr = generateInlineStyle(component.styles)
     if (styleStr) {
@@ -178,6 +223,18 @@ function generateAttributes(component) {
     }
   }
   
+  // 7. 逻辑绑定 (composables)
+  if (component.logicBindings) {
+    Object.entries(component.logicBindings).forEach(([propKey, binding]) => {
+      const alias = logicResolver
+        ? logicResolver(binding.composableId, binding.returnKey)
+        : buildLogicAlias(binding.composableId, binding.returnKey)
+      if (alias) {
+        attrs.push(`:${propKey}="${alias}"`)
+      }
+    })
+  }
+
   return attrs
 }
 
@@ -199,36 +256,108 @@ function generateInlineStyle(styles) {
 /**
  * 生成 script 部分
  */
-export function generateScript(page, project = {}) {
+export function generateScript(components, page = {}, project = {}) {
   const lines = []
   
-  // 导入必要的依赖
-  lines.push("import { ref, reactive } from 'vue'")
+  const state = project.reactiveState || []
+  const computedDefs = project.computedDefs || []
+  const composablesRaw = Array.isArray(page.composables) ? page.composables : []
+  // 兜底 source，避免 useMouse 等无来源时报未定义
+  const composables = composablesRaw
+    .filter(comp => comp && comp.name)
+    .map(comp => {
+      const source = comp.source || (comp.name && comp.name.startsWith('use') ? '@vueuse/core' : '')
+      return { ...comp, source }
+    })
   
-  // 检查是否有事件绑定，需要导入 router
-  const hasNavigation = checkHasNavigation(page.components)
-  if (hasNavigation) {
-    lines.push("import { useRouter } from 'vue-router'")
-    lines.push('')
-    lines.push('const router = useRouter()')
+  // 1. 收集 Imports
+  const usedImports = new Set()
+  if (state.some(s => s.type === 'ref')) usedImports.add('ref')
+  if (state.some(s => s.type === 'reactive')) usedImports.add('reactive')
+  if (computedDefs.length > 0) usedImports.add('computed')
+  
+  const hasNavigation = checkHasNavigation(components)
+  if (hasNavigation) usedImports.add('useRouter')
+  
+  // 生成 Import 语句
+  const vueImports = []
+  if (usedImports.has('ref')) vueImports.push('ref')
+  if (usedImports.has('reactive')) vueImports.push('reactive')
+  if (usedImports.has('computed')) vueImports.push('computed')
+  
+  if (vueImports.length > 0) {
+    lines.push(`import { ${vueImports.join(', ')} } from 'vue'`)
   }
+  
+  if (usedImports.has('useRouter')) {
+    lines.push("import { useRouter } from 'vue-router'")
+  }
+
+  // 组合式函数导入（按来源聚合）
+  const composableImports = new Map()
+  composables.forEach(comp => {
+    if (!comp?.name || !comp?.source) return
+    if (!composableImports.has(comp.source)) {
+      composableImports.set(comp.source, new Set())
+    }
+    composableImports.get(comp.source).add(comp.name)
+  })
+
+  composableImports.forEach((names, source) => {
+    lines.push(`import { ${Array.from(names).join(', ')} } from '${source}'`)
+  })
   
   lines.push('')
   
-  // 生成响应式数据
-  const formFields = collectFormFields(page.components)
-  if (formFields.length > 0) {
-    lines.push('// 表单数据')
-    lines.push('const formData = reactive({')
-    formFields.forEach(field => {
-      lines.push(`  ${field}: '',`)
-    })
-    lines.push('})')
+  if (usedImports.has('useRouter')) {
+    lines.push('const router = useRouter()')
     lines.push('')
   }
   
-  // 生成事件处理函数
-  const handlers = generateEventHandlers(page.components)
+  // 2. 生成响应式状态
+  if (state.length > 0) {
+    lines.push('// 响应式状态')
+    state.forEach(item => {
+      const value = item.value || (item.type === 'ref' ? "''" : '{}')
+      lines.push(`const ${item.name} = ${item.type}(${value})`)
+    })
+    lines.push('')
+  }
+  
+  // 3. 生成计算属性
+  if (computedDefs.length > 0) {
+    lines.push('// 计算属性')
+    computedDefs.forEach(item => {
+      lines.push(`const ${item.name} = computed(() => {`)
+      const codeLines = item.code ? item.code.split('\n') : []
+      codeLines.forEach(line => lines.push(`  ${line}`))
+      lines.push('})')
+    })
+    lines.push('')
+  }
+  
+  // 4. 生成逻辑 (composables)
+  if (composables.length > 0) {
+    lines.push('// 逻辑 (composables)')
+    composables
+      .filter(comp => comp.name && comp.source)
+      .forEach(comp => {
+      const aliasList = Array.isArray(comp.returns)
+        ? comp.returns.map(ret => `${ret}: ${buildLogicAlias(comp.id, ret)}`).join(', ')
+        : ''
+      const params = buildComposableParams(comp.params)
+      if (aliasList) {
+        lines.push(`const { ${aliasList} } = ${comp.name}(${params})`)
+      } else {
+        const varName = buildLogicAlias(comp.id, comp.name || 'logic')
+        lines.push(`const ${varName} = ${comp.name}(${params})`)
+      }
+      })
+    lines.push('')
+  }
+
+  // 5. 生成事件处理函数
+  const handlers = generateEventHandlers(components)
   if (handlers.length > 0) {
     lines.push('// 事件处理函数')
     handlers.forEach(handler => {
@@ -266,38 +395,6 @@ function checkHasNavigation(components) {
   return false
 }
 
-/**
- * 收集表单字段
- */
-function collectFormFields(components) {
-  const fields = new Set()
-  
-  function traverse(comps) {
-    if (!Array.isArray(comps)) {
-      console.warn('traverse: comps is not an array', comps)
-      return
-    }
-    
-    comps.forEach(component => {
-      if (!component) return
-      
-      // 表单组件
-      if (['Input', 'Textarea', 'Select', 'Checkbox', 'Radio', 'Switch', 'DatePicker'].includes(component.type)) {
-        const fieldName = component.props?.name || component.props?.placeholder || component.id
-        if (fieldName) {
-          fields.add(fieldName)
-        }
-      }
-      
-      if (component.children && component.children.length > 0) {
-        traverse(component.children)
-      }
-    })
-  }
-  
-  traverse(components)
-  return Array.from(fields)
-}
 
 /**
  * 生成事件处理函数
@@ -316,7 +413,7 @@ function generateEventHandlers(components) {
       if (component.events) {
         Object.entries(component.events).forEach(([event, handler]) => {
           if (handler && handler.action) {
-            const funcName = `handle${capitalizeFirst(event)}`
+            const funcName = `handle${capitalizeFirst(event)}_${component.id.slice(0, 4)}`
             
             if (!handlerSet.has(funcName)) {
               handlerSet.add(funcName)
@@ -402,6 +499,76 @@ function escapeHtml(text) {
 
 function escapeAttr(text) {
   return text.replace(/"/g, '&quot;')
+}
+
+function buildLogicAlias(composableId, returnKey) {
+  if (!composableId || !returnKey) return null
+  const safeId = String(composableId).replace(/[^a-zA-Z0-9_]/g, '_')
+  const safeKey = String(returnKey).replace(/[^a-zA-Z0-9_]/g, '_')
+  return `${safeId}_${safeKey}`
+}
+
+function buildComposableParams(params) {
+  if (!Array.isArray(params) || params.length === 0) return ''
+  return params.map(p => {
+    const val = (p && typeof p === 'object' && 'value' in p) ? p.value : p
+    const stringified = JSON.stringify(val)
+    return stringified === undefined ? 'undefined' : stringified
+  }).join(', ')
+}
+
+function buildLogicResolver(composables = []) {
+  return (composableId, returnKey) => {
+    const exists = composables.find(c => c.id === composableId)
+    if (!exists) return null
+    return buildLogicAlias(composableId, returnKey)
+  }
+}
+
+function resolveComponentTree(page = {}) {
+  if (Array.isArray(page.components)) {
+    return cloneDeep(page.components)
+  }
+  if (!Array.isArray(page.componentTree)) return []
+
+  const map = new Map()
+  page.componentTree.forEach(comp => {
+    map.set(comp.id, { ...cloneDeep(comp), children: [] })
+  })
+
+  page.componentTree.forEach(comp => {
+    const node = map.get(comp.id)
+    const childIds = Array.isArray(comp.children) ? comp.children : []
+    childIds.forEach(cid => {
+      const childNode = map.get(cid)
+      if (node && childNode) {
+        node.children.push(childNode)
+      }
+    })
+  })
+
+  const roots = []
+  const rootIds = Array.isArray(page.rootOrder) && page.rootOrder.length
+    ? page.rootOrder
+    : page.componentTree.filter(c => !c.parentId).map(c => c.id)
+  rootIds.forEach(id => {
+    const node = map.get(id)
+    if (node) roots.push(node)
+  })
+  return roots
+}
+
+function groupChildrenBySlot(children) {
+  if (!Array.isArray(children)) return null
+  const hasSlot = children.some(c => c && typeof c.slotName !== 'undefined')
+  if (!hasSlot) return null
+  const buckets = new Map()
+  children.forEach(child => {
+    const slot = child?.slotName || 'default'
+    if (!buckets.has(slot)) buckets.set(slot, [])
+    buckets.get(slot).push(child)
+  })
+  return Array.from(buckets.entries()).map(([slot, list]) => ({ slot, children: list }))
 }
 
 export default {

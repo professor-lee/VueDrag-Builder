@@ -19,6 +19,10 @@
       <el-tab-pane label="页面" name="pages">
         <PageManager />
       </el-tab-pane>
+
+      <el-tab-pane label="逻辑" name="logic">
+        <LogicLibrary />
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -28,6 +32,7 @@ import { ref } from 'vue'
 import ComponentLibrary from '@/components/left-panel/ComponentLibrary.vue'
 import ComponentTree from '@/components/left-panel/ComponentTree.vue'
 import PageManager from '@/components/left-panel/PageManager.vue'
+import LogicLibrary from '@/components/left-panel/LogicLibrary.vue'
 
 const activeTab = ref('components')
 </script>

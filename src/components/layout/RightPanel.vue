@@ -4,24 +4,34 @@
       <span class="header-title">属性检查器</span>
     </div>
 
-    <div v-if="selectedComponent" class="panel-content">
-      <el-tabs v-model="activeTab" class="sidebar-tabs">
-        <el-tab-pane label="属性" name="props">
-          <PropertyPanel :component="selectedComponent" />
-        </el-tab-pane>
+    <div class="panel-content">
+      <!-- Global Data Management -->
+      <el-collapse v-model="activeNames" class="data-collapse">
+        <el-collapse-item title="数据管理 (Data)" name="data">
+          <DataPanel />
+        </el-collapse-item>
+      </el-collapse>
 
-        <el-tab-pane label="样式" name="styles">
-          <StyleEditor :component="selectedComponent" />
-        </el-tab-pane>
+      <!-- Component Properties -->
+      <div v-if="selectedComponent" class="component-section">
+        <el-tabs v-model="activeTab" class="sidebar-tabs">
+          <el-tab-pane label="属性" name="props">
+            <PropertyPanel :component="selectedComponent" />
+          </el-tab-pane>
 
-        <el-tab-pane label="事件" name="events">
-          <EventBinder :component="selectedComponent" />
-        </el-tab-pane>
-      </el-tabs>
-    </div>
+          <el-tab-pane label="样式" name="styles">
+            <StyleEditor :component="selectedComponent" />
+          </el-tab-pane>
 
-    <div v-else class="empty-state">
-      <el-empty description="请选择一个组件" :image-size="60" />
+          <el-tab-pane label="事件" name="events">
+            <EventBinder :component="selectedComponent" />
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+
+      <div v-else class="empty-state">
+        <el-empty description="请选择一个组件" :image-size="60" />
+      </div>
     </div>
   </div>
 </template>
@@ -33,11 +43,13 @@ import { useCanvasStore } from '@/stores/canvas'
 import PropertyPanel from '@/components/right-panel/PropertyPanel.vue'
 import StyleEditor from '@/components/right-panel/StyleEditor.vue'
 import EventBinder from '@/components/right-panel/EventBinder.vue'
+import DataPanel from '@/components/right-panel/DataPanel.vue'
 
 const editorStore = useEditorStore()
 const canvasStore = useCanvasStore()
 
 const activeTab = ref('props')
+const activeNames = ref(['data'])
 
 const selectedComponent = computed(() => {
   if (!editorStore.selectedComponentId) return null
@@ -75,6 +87,36 @@ const selectedComponent = computed(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.data-collapse {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--vscode-widget-border);
+  overflow-y: auto;
+  max-height: 40%;
+}
+
+.data-collapse :deep(.el-collapse-item__header) {
+  background-color: var(--vscode-sidebar-bg);
+  color: var(--vscode-foreground);
+  padding-left: 10px;
+  height: 35px;
+  line-height: 35px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.data-collapse :deep(.el-collapse-item__content) {
+  padding-bottom: 0;
+  background-color: var(--vscode-sidebar-bg);
+}
+
+.component-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .sidebar-tabs {

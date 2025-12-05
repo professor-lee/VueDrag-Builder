@@ -52,6 +52,13 @@
       :style="{ cursor: isPanning ? 'grabbing' : 'grab' }"
     ></div>
 
+    <div class="logic-fab">
+      <el-button size="small" type="primary" plain @click="openLogicBoard">
+        <el-icon><Plus /></el-icon>
+        添加逻辑
+      </el-button>
+    </div>
+
     <!-- 重置视图按钮 -->
     <div class="canvas-controls">
       <el-button circle :icon="Aim" @click="resetView" title="重置视图" />
@@ -64,7 +71,7 @@ import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useCanvasStore } from '@/stores/canvas'
 import { useEditorStore } from '@/stores/editor'
 import { ElMessage } from 'element-plus'
-import { Aim } from '@element-plus/icons-vue'
+import { Aim, Plus } from '@element-plus/icons-vue'
 import DynamicComponent from './DynamicComponent.vue'
 
 const canvasStore = useCanvasStore()
@@ -93,6 +100,14 @@ const handleKeyUp = (e) => {
     isSpacePressed.value = false
     // 不在这里取消 isPanning，允许用户在松开空格后继续拖动直到松开鼠标
   }
+}
+
+const openLogicBoard = () => {
+  if (!canvasStore.currentPageId) {
+    ElMessage.warning('请先选择页面')
+    return
+  }
+  editorStore.openLogicBoard(canvasStore.currentPageId)
 }
 
 const resetView = () => {
@@ -264,7 +279,8 @@ const handleDragOver = (e) => {
   e.preventDefault()
   // 在 dragover 中无法读取 data，使用 types 判断
   const isMove = e.dataTransfer.types.includes('move-component-id')
-  e.dataTransfer.dropEffect = isMove ? 'move' : 'copy'
+  const isComposable = e.dataTransfer.types.includes('composable') || e.dataTransfer.types.includes('text/plain') && e.dataTransfer.getData('type') === 'composable'
+  e.dataTransfer.dropEffect = isComposable ? 'copy' : (isMove ? 'move' : 'copy')
 }
 
 const handleDragEnter = (e) => {
@@ -282,6 +298,27 @@ const handleDragLeave = (e) => {
 const handleDrop = (e) => {
   e.preventDefault()
   isDragOver.value = false
+
+  // 处理逻辑拖入 -> 打开逻辑编排并新增实例
+  const composableStr = e.dataTransfer.getData('composable')
+  if (composableStr) {
+    try {
+      const item = JSON.parse(composableStr)
+      canvasStore.addComposable({
+        name: item.name,
+        source: item.source,
+        params: item.params || [],
+        returns: item.returns || [],
+        bindings: [],
+      })
+      editorStore.openLogicBoard(canvasStore.currentPageId)
+      ElMessage.success(`已添加逻辑 ${item.name}`)
+    } catch (err) {
+      console.error('添加逻辑失败', err)
+      ElMessage.error('添加逻辑失败')
+    }
+    return
+  }
 
   const dropIndex = getRootDropIndex(e.clientY)
 
@@ -407,5 +444,13 @@ const handleDrop = (e) => {
   bottom: 20px;
   right: 20px;
   z-index: 100;
+}
+
+.logic-fab {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 101;
+  pointer-events: auto;
 }
 </style>

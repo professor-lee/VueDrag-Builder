@@ -323,6 +323,7 @@ const sanitizeScriptContent = (scriptContent) => {
 
   const vueHelpers = new Set()
   const elementHelpers = new Set()
+  const vueUseHelpers = new Set()
   let usesRouterImport = false
   const bodyLines = []
 
@@ -353,6 +354,12 @@ const sanitizeScriptContent = (scriptContent) => {
       return
     }
 
+    const vueUseMatch = trimmed.match(/import\s+{([^}]+)}\s+from\s+['"]@vueuse\/core['"]/)
+    if (vueUseMatch) {
+      parseHelperNames(vueUseMatch[1]).forEach(name => vueUseHelpers.add(name))
+      return
+    }
+
     const routerMatch = trimmed.match(/from\s+['"]vue-router['"]/)
     if (routerMatch) {
       usesRouterImport = true
@@ -366,6 +373,9 @@ const sanitizeScriptContent = (scriptContent) => {
   }
   if (elementHelpers.size > 0) {
     injectedHelpers.push(`const { ${Array.from(elementHelpers).join(', ')} } = ElementPlus`)
+  }
+  if (vueUseHelpers.size > 0) {
+    injectedHelpers.push(`const { ${Array.from(vueUseHelpers).join(', ')} } = VueUse`)
   }
   const cleaned = [...injectedHelpers, ...bodyLines].join('\n')
   const bindingRegex = /\b(?:const|let|var|function)\s+([A-Za-z0-9_]+)/g
@@ -423,6 +433,8 @@ const buildPreviewDocument = (code) => {
   <script src="https://registry.npmmirror.com/vue/3.3.4/files/dist/vue.global.prod.js"><\/script>
   <script src="https://registry.npmmirror.com/element-plus/2.4.4/files/dist/index.full.min.js"><\/script>
   <script src="https://registry.npmmirror.com/@element-plus/icons-vue/2.3.1/files/dist/index.iife.min.js"><\/script>
+  <script src="https://registry.npmmirror.com/@vueuse/shared/10.11.1/files/index.iife.min.js"><\/script>
+  <script src="https://registry.npmmirror.com/@vueuse/core/10.11.1/files/index.iife.min.js"><\/script>
   <script>
     // 注入事件监听，处理缩放和触控板平移
     window.addEventListener('wheel', (e) => {
@@ -510,19 +522,26 @@ const buildPreviewDocument = (code) => {
       }
     })
 
-    const runner = new Function(
-      'Vue',
-      'ElementPlus',
-      'useRouter',
-      'defineProps',
-      'defineEmits',
-      'defineExpose',
-      'defineSlots',
-      'defineModel',
-      'defineOptions',
-      'console',
-      scriptMeta.code + '\\n' + scriptMeta.exportsStatement
-    )
+    let runner
+    try {
+      runner = new Function(
+        'Vue',
+        'ElementPlus',
+        'VueUse',
+        'useRouter',
+        'defineProps',
+        'defineEmits',
+        'defineExpose',
+        'defineSlots',
+        'defineModel',
+        'defineOptions',
+        'console',
+        scriptMeta.code + '\\n' + scriptMeta.exportsStatement
+      )
+    } catch (e) {
+      renderError(e)
+      throw e
+    }
 
     const noopObject = () => ({})
     const noopFn = () => () => {}
@@ -536,6 +555,7 @@ const buildPreviewDocument = (code) => {
             return runner(
               Vue,
               ElementPlus,
+              window.VueUse || {},
               routerStub,
               noopObject,
               noopFn,
